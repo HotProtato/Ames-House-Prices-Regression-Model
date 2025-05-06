@@ -1,0 +1,2 @@
+- I tested to see if corners have LotFrontage values of both sides combined, by dividing corner
+non-null LotFrontage values by 2, the BoxPlot went against this theory.
