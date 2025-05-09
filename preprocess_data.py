@@ -11,23 +11,23 @@ class DataPreprocessor:
                  train_path='data/train.csv',
                  test_path='data/test.csv',
                  iowa_house_price_index_path='data/iowa_house_price_index.csv',
-                 ames_house_price_index_path='data/ames_house_price_index.csv',
-                 iowa_labour_participation_index_path='data/iowa_labour_participation_index.csv',
-                 iowa_unemployment_rate_index_path='data/iowa_unemployment_rate_index.csv'):
+                 ames_unemployment_rate_path='data/ames_unemployment_rate.csv',
+                 iowa_labour_participation_index_path='data/iowa_labour_participation_rate.csv',
+                 iowa_unemployment_rate_index_path='data/iowa_unemployment_rate.csv'):
 
         self.train_df = pd.read_csv(train_path)
         self.test_df = pd.read_csv(test_path)
 
         self.iowa_house_price_index = pd.read_csv(iowa_house_price_index_path)
-        self.ames_unemployment_rate = pd.read_csv(ames_house_price_index_path)
+        self.ames_unemployment_rate = pd.read_csv(ames_unemployment_rate_path)
         self.iowa_labour_participation_rate = pd.read_csv(iowa_labour_participation_index_path)
         self.iowa_unemployment_rate = pd.read_csv(iowa_unemployment_rate_index_path)
 
         # Declare None values, to allow None check in "preprocess_data" to work.
         self.X_train = None
         self.X_test = None
-        self.y_train = None
-        self.y_test = None
+        self.Y_train = None
+        self.Y_test = None
         self.imputation_params = {}
 
     # 1. Set indexes. Data will be converted to date after contacting for greater efficiency.
