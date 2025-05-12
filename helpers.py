@@ -3,23 +3,24 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder
 import numpy as np
 
+def _custom_feature_names(transformer_name, feature_name):
+    if transformer_name == "remainder" and feature_name.startswith("ohe"):
+        return feature_name
+    else:
+        return f"{transformer_name}__{feature_name}"
 
-def generate_preprocessor(drop, sparse_output,
-                          ordinal_cats_ordered, categorical_cols_ordinal, numerical_cols,
-                          categorical_cols_nominal):
-    # Many parameters, as this is used during both EDA and production.
+def generate_preprocessor(ordinal_cats_ordered, categorical_cols_ordinal, numerical_cols, sparse=False):
 
     return ColumnTransformer(
         transformers=[
             ('ord', OrdinalEncoder(categories=ordinal_cats_ordered), categorical_cols_ordinal),
-            ('num', StandardScaler(), numerical_cols),
-            ('ohe', OneHotEncoder(drop=drop,
-                                  handle_unknown='ignore',
-                                  sparse_output=sparse_output),  # Set sparse=False for now
-             categorical_cols_nominal)
+            ('num', StandardScaler(), numerical_cols)
         ],
-        remainder='passthrough'  # Keep any columns not specified, or use 'drop'
+        remainder='passthrough',
+        sparse_threshold=(0 if sparse else 1),
+        verbose_feature_names_out=_custom_feature_names
     )
+
 
 
 def get_numeric_cols():
@@ -29,8 +30,11 @@ def get_numeric_cols():
             'BsmtFullBath', 'BsmtHalfBath', 'FullBath', 'HalfBath', 'BedroomAbvGr',
             'KitchenAbvGr', 'TotRmsAbvGrd', 'Fireplaces', 'GarageYrBlt', 'GarageCars',
             'GarageArea', 'WoodDeckSF', 'OpenPorchSF', 'EnclosedPorch', '3SsnPorch',
-            'ScreenPorch', 'PoolArea', 'MiscVal', 'MoSold', 'YrSold']
-# TO CONSIDER: I could remove LotFrontage and just use the LotFrontageRatio.
+            'ScreenPorch', 'PoolArea', 'MiscVal', 'MoSold', 'YrSold',
+            'L1_A_UR', 'L1_A_UR_MA3', 'L1_A_UR_MA6', 'L1_I_HPI', 'L1_I_HPI_MA3', 'L1_I_HPI_MA6',
+            'L1_I_PR', 'L1_I_PR_MA3', 'L1_I_PR_MA6', 'L1_I_UR', 'L1_I_UR_MA3', 'L1_I_UR_MA6', 'SqrtLotArea']
+# Separated macroeconomic fields below, easier to distinguish.
+# A_UR", "I_HPI", "I_PR", "I_UR
 
 
 def get_categorical_cols_nominal():
@@ -121,7 +125,7 @@ def learn_scaling_factors(df):
     for level_name, grouping_cols in groups_to_calculate.items():
         print(f"Calculating for group level: {level_name} ({grouping_cols})")
         grouped = df_calc.groupby(grouping_cols)['ScalingFactor']
-        # Use .agg() to get both median and count cleanly
+
         rules_for_level = grouped.agg(
             Median_Ratio="median",
             SampleCount="count"
@@ -129,9 +133,6 @@ def learn_scaling_factors(df):
         grouped_rules_dict[level_name] = rules_for_level
         print(f" -> Found {len(rules_for_level)} groups for {level_name}")
 
-    # --- Return the package ---
-    print("Finished learning rules.")
-    # Return dict of DataFrames (your 'indexed_scales') and the global median separately
     return grouped_rules_dict, global_median_ratio
 
 
@@ -189,7 +190,7 @@ def fill_na_lotfrontage(df_in, indexed_scales, threshold, global_value):
 
     if 'SqrtLotArea' not in df.columns:
         if 'LotArea' in df.columns:
-            df['SqrtLotArea'] = np.sqrt(df['LotArea']).fillna(0) # Create if missing, handle NaNs
+            df['SqrtLotArea'] = np.sqrt(df['LotArea']).fillna(0)  # Create if missing, handle NaNs
         else:
             raise ValueError("Cannot impute LotFrontage without LotArea/SqrtLotArea.")
 

@@ -1,4 +1,7 @@
 # Ended up moving this into its own section, due to the overall complexity of my project.
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+
 import helpers
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -56,20 +59,19 @@ class DataPreprocessor:
     # 4. Include 3 and 6 month rolling averages, lag all values by 1 month.
     def _fill_and_shift(self):
         for col in self.merged_df.columns:
-            if col == "Date": continue
             self.merged_df[f'{col}_MA3'] = self.merged_df[col].rolling(window=3).mean()
             self.merged_df[f'{col}_MA6'] = self.merged_df[col].rolling(window=6).mean()
 
         self.merged_df = self.merged_df.shift(periods=1)
 
         # Add "L1" for lag 1.
-        rename_map = {col: f"L1_{col}" for col in self.merged_df.columns if col != "Date"}
+        rename_map = {col: f"L1_{col}" for col in self.merged_df.columns}
         self.merged_df = self.merged_df.rename(columns=rename_map)
 
     # 6. Complete the merging
     def _merge_with_training_data(self):
-        self.merged_df["MoSold"] = self.merged_df["Date"].dt.month
-        self.merged_df["YrSold"] = self.merged_df["Date"].dt.year
+        self.merged_df["MoSold"] = self.merged_df.index.month
+        self.merged_df["YrSold"] = self.merged_df.index.year
         self.train_df = pd.merge(self.train_df, self.merged_df, how='left', on=['MoSold', 'YrSold'])
 
     # 7. Split test and training data
@@ -78,7 +80,7 @@ class DataPreprocessor:
         x_train = self.train_df.drop(columns=[target_col])
         y_train = self.train_df[target_col]
 
-        self.X_train, self.X_test, self.Y_train, self.Y_test\
+        self.X_train, self.X_test, self.Y_train, self.Y_test \
             = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
 
     # 9. Learn relevant missing electrical data based on train data only
@@ -98,21 +100,21 @@ class DataPreprocessor:
         self.X_train["LotFrontage"] = helpers.fill_na_lotfrontage(self.X_train, indexed_scales, threshold, global_value)
         self.X_test["LotFrontage"] = helpers.fill_na_lotfrontage(self.X_test, indexed_scales, threshold, global_value)
 
-    def preprocess_data(self, lot_frontage_threshold):
+
+    def preprocess_data(self, lot_frontage_threshold, use_ohe=True):
         if self.X_train is not None or self.Y_train is not None or self.X_test is not None or self.Y_test is not None:
             return self.X_train, self.X_test, self.Y_train, self.Y_test
         self._index_data()
         self._merge_data()
         self._align_date_data()
 
-        # Explicitly declaring "Date" as it'll be useful for EDA.
-        self.merged_df["Date"] = self.merged_df.index
         self._fill_and_shift()
 
         # 5. added this step here to be more explicit, it doesn't fit well anywhere else.
         self.train_df = helpers.init_fill_na(self.train_df)
 
         self._merge_with_training_data()
+
         self._split_data()
 
         # 8 Impute SqrtLotArea as a useful feature, also needed for helpers lot frontage & scaling factor methods.
@@ -121,4 +123,22 @@ class DataPreprocessor:
 
         self._learn_missing_params()
         self._impute_missing_params(lot_frontage_threshold)
+
+        if use_ohe:
+            encoder = ColumnTransformer([
+                ('ohe', OneHotEncoder(drop='first', sparse_output=False), helpers.get_categorical_cols_nominal())],
+                remainder='passthrough', sparse_threshold=1, verbose_feature_names_out=_custom_feature_names)
+            encoder.set_output(transform="pandas")
+
+            encoder.fit(pd.concat([self.X_train, self.X_test], axis=0))
+            self.X_train = encoder.transform(self.X_train)
+            self.X_test = encoder.transform(self.X_test)
+            self.X_train = self.X_train.drop("Id", axis=1)
+            self.X_test = self.X_test.drop("Id", axis=1)
         return self.X_train, self.X_test, self.Y_train, self.Y_test
+
+def _custom_feature_names(transformer_name, feature_name):
+    if transformer_name != "ohe":
+        return feature_name
+    else:
+        return f"{transformer_name}__{feature_name}"
