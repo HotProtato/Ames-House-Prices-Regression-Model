@@ -4,8 +4,11 @@ from sklearn.preprocessing import OneHotEncoder
 
 import helpers
 import pandas as pd
+import sklearn
 from sklearn.model_selection import train_test_split
 import numpy as np
+
+from feature_engineering import FeatureEngineering
 
 
 class DataPreprocessor:
@@ -18,6 +21,7 @@ class DataPreprocessor:
                  iowa_labour_participation_index_path='data/iowa_labour_participation_rate.csv',
                  iowa_unemployment_rate_index_path='data/iowa_unemployment_rate.csv'):
 
+        sklearn.set_config(transform_output="pandas")
         self.train_df = pd.read_csv(train_path)
         self.test_df = pd.read_csv(test_path)
 
@@ -78,7 +82,7 @@ class DataPreprocessor:
     def _split_data(self):
         target_col = "SalePrice"
         x_train = self.train_df.drop(columns=[target_col])
-        y_train = self.train_df[target_col]
+        y_train = np.log1p(self.train_df[target_col])
 
         self.X_train, self.X_test, self.Y_train, self.Y_test \
             = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
@@ -100,7 +104,6 @@ class DataPreprocessor:
         self.X_train["LotFrontage"] = helpers.fill_na_lotfrontage(self.X_train, indexed_scales, threshold, global_value)
         self.X_test["LotFrontage"] = helpers.fill_na_lotfrontage(self.X_test, indexed_scales, threshold, global_value)
 
-
     def preprocess_data(self, lot_frontage_threshold, use_ohe=True):
         if self.X_train is not None or self.Y_train is not None or self.X_test is not None or self.Y_test is not None:
             return self.X_train, self.X_test, self.Y_train, self.Y_test
@@ -117,12 +120,16 @@ class DataPreprocessor:
 
         self._split_data()
 
-        # 8 Impute SqrtLotArea as a useful feature, also needed for helpers lot frontage & scaling factor methods.
+        # 8 Impute SqrtLotArea needed for helpers lot frontage & scaling factor methods.
         self.X_train["SqrtLotArea"] = np.sqrt(self.X_train["LotArea"])
         self.X_test["SqrtLotArea"] = np.sqrt(self.X_test["LotArea"])
 
         self._learn_missing_params()
         self._impute_missing_params(lot_frontage_threshold)
+
+        # Removing SqrtLotArea as it's redundant due to LotArea being log transformed.
+        self.X_train = self.X_train.drop(columns=["SqrtLotArea"], axis=1)
+        self.X_test = self.X_test.drop(columns=["SqrtLotArea"], axis=1)
 
         if use_ohe:
             encoder = ColumnTransformer([
@@ -135,7 +142,12 @@ class DataPreprocessor:
             self.X_test = encoder.transform(self.X_test)
             self.X_train = self.X_train.drop("Id", axis=1)
             self.X_test = self.X_test.drop("Id", axis=1)
+            feature_engineer = FeatureEngineering()
+            feature_engineer.learn_maximum(self.X_train)
+            self.X_train = feature_engineer.transform_features(self.X_train)
+            self.X_test = feature_engineer.transform_features(self.X_test)
         return self.X_train, self.X_test, self.Y_train, self.Y_test
+
 
 def _custom_feature_names(transformer_name, feature_name):
     if transformer_name != "ohe":
