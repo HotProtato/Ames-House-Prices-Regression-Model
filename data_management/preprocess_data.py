@@ -2,13 +2,13 @@
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 
-import helpers
+from utils import helpers
 import pandas as pd
 import sklearn
 from sklearn.model_selection import train_test_split
 import numpy as np
 
-from feature_engineering import FeatureEngineering
+from data_management import feature_engineering
 
 
 class DataPreprocessor:
@@ -142,10 +142,24 @@ class DataPreprocessor:
             self.X_test = encoder.transform(self.X_test)
             self.X_train = self.X_train.drop("Id", axis=1)
             self.X_test = self.X_test.drop("Id", axis=1)
-            feature_engineer = FeatureEngineering()
+            feature_engineer = feature_engineering.FeatureEngineering()
             feature_engineer.learn_maximum(self.X_train)
             self.X_train = feature_engineer.transform_features(self.X_train)
             self.X_test = feature_engineer.transform_features(self.X_test)
+
+            # These features sum to <= 1, and results improved with their removal.
+
+            to_remove = ['ohe__Utilities_NoSeWa', 'ohe__Neighborhood_Blueste', 'ohe__Condition1_RRNe',
+                         'ohe__Condition2_PosA', 'ohe__Condition2_RRAe', 'ohe__Condition2_RRAn', 'ohe__Condition2_RRNn',
+                         'ohe__RoofMatl_Membran', 'ohe__RoofMatl_Metal', 'ohe__RoofMatl_Roll',
+                         'ohe__Exterior1st_AsphShn', 'ohe__Exterior1st_CBlock', 'ohe__Exterior1st_ImStucc',
+                         'ohe__Exterior1st_Stone', 'ohe__Exterior2nd_CBlock', 'ohe__Exterior2nd_Other',
+                         'ohe__Electrical_Mix',
+                         'ohe__MiscFeature_TenC']  # Removed based on <= 1 total non-zero appearances
+
+            self.X_train = self.X_train.drop(to_remove, axis=1)
+            self.X_test = self.X_test.drop(to_remove, axis=1)
+
         return self.X_train, self.X_test, self.Y_train, self.Y_test
 
 

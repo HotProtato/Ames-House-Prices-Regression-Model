@@ -14,6 +14,8 @@ class FeatureEngineering:
         # Years remodelled since remodelled during sale.
         df["BuildingRemodNewnessScore"] = (df["YrSold"] - df["YearRemodAdd"]) * -1
 
+        df = df.drop(["YearBuilt", "YearRemodAdd"], axis=1)
+
         # Logic: GarageYrBlt is -1 if no garage, we want a consistent structure where smaller = worse, larger = better.
         # We also want the GarageAgeAtSale instead. So first, for non -1 values, update them via YrSold - GarageYrBlt.
         # Then, set all -1 values as the max garage year +1, then have all multiplied by -1 to be managed by the

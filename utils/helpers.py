@@ -1,7 +1,9 @@
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder
 import numpy as np
+import torch
+from torch import nn
 
 def _custom_feature_names(transformer_name, feature_name):
     if transformer_name == "remainder" and feature_name.startswith("ohe"):
@@ -21,18 +23,16 @@ def generate_preprocessor(ordinal_cats_ordered, categorical_cols_ordinal, numeri
         verbose_feature_names_out=_custom_feature_names
     )
 
+def get_log_minmax_cols():
+    return ['LotArea', 'LotFrontage', '2ndFlrSF', 'MasVnrArea', '1stFlrSF', 'OpenPorchSF', 'TotalBsmtSF',
+            'LowQualFinSF', 'GrLivArea', 'GarageArea', 'WoodDeckSF', 'BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF',
+            '3SsnPorch', 'ScreenPorch', 'EnclosedPorch', 'MiscVal']
 
-
-def get_numeric_cols():
-    return ['LotFrontage', 'LotArea', 'OverallQual', 'OverallCond', 'YearBuilt',
-            'YearRemodAdd', 'MasVnrArea', 'BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF',
-            'TotalBsmtSF', '1stFlrSF', '2ndFlrSF', 'LowQualFinSF', 'GrLivArea',
-            'BsmtFullBath', 'BsmtHalfBath', 'FullBath', 'HalfBath', 'BedroomAbvGr',
-            'KitchenAbvGr', 'TotRmsAbvGrd', 'Fireplaces', 'GarageYrBlt', 'GarageCars',
-            'GarageArea', 'WoodDeckSF', 'OpenPorchSF', 'EnclosedPorch', '3SsnPorch',
-            'ScreenPorch', 'PoolArea', 'MiscVal', 'MoSold', 'YrSold',
-            'L1_A_UR', 'L1_A_UR_MA3', 'L1_A_UR_MA6', 'L1_I_HPI', 'L1_I_HPI_MA3', 'L1_I_HPI_MA6',
-            'L1_I_PR', 'L1_I_PR_MA3', 'L1_I_PR_MA6', 'L1_I_UR', 'L1_I_UR_MA3', 'L1_I_UR_MA6', 'SqrtLotArea']
+def get_minmax_cols():
+    return ['OverallQual', 'OverallCond', 'YrSold', 'OverallQual_sq', 'BuildingNewnessScore',
+            'BuildingRemodNewnessScore', 'GarageCars', 'Fireplaces', 'TotRmsAbvGrd', 'YrSold', 'L1_A_UR',
+            'L1_A_UR_MA3', 'L1_A_UR_MA6', 'L1_I_HPI', 'L1_I_HPI_MA3', 'L1_I_HPI_MA6', 'L1_I_PR', 'L1_I_PR_MA3',
+            'L1_I_PR_MA6', 'L1_I_UR', 'L1_I_UR_MA3', 'L1_I_UR_MA6', 'OverallQual_sq', 'GarageNewnessScore']
 # Separated macroeconomic fields below, easier to distinguish.
 # A_UR", "I_HPI", "I_PR", "I_UR
 
@@ -43,7 +43,8 @@ def get_categorical_cols_nominal():
             'BldgType', 'HouseStyle', 'RoofStyle', 'RoofMatl', 'Exterior1st',
             'Exterior2nd', 'MasVnrType', 'Foundation', 'BsmtExposure', 'BsmtFinType1',
             'BsmtFinType2', 'Heating', 'CentralAir', 'Electrical', 'GarageType',
-            'MiscFeature', 'SaleType', 'SaleCondition']
+            'MiscFeature', 'SaleType', 'SaleCondition', 'BsmtFullBath', 'BsmtHalfBath',
+            'FullBath', 'HalfBath', 'BedroomAbvGr', 'KitchenAbvGr']
 
 
 def get_categorical_cols_ordinal():
@@ -52,9 +53,9 @@ def get_categorical_cols_ordinal():
 
 
 def get_ordinal_cats_ordered():
-    ordinal_cats_ordered = [
-        ['Reg', 'IR1', 'IR2', 'IR3'],  # LotShape
-        ['Gtl', 'Mod', 'Sev'],  # LandSlope
+    return [
+        ['IR3', 'IR2', 'IR1', 'Reg'],  # LotShape
+        ['Sev', 'Mod', 'Gtl'],  # LandSlope
         ['Po', 'Fa', 'TA', 'Gd', 'Ex'],  # ExterQual
         ['Po', 'Fa', 'TA', 'Gd', 'Ex'],  # ExterCond
         ['None', 'Po', 'Fa', 'TA', 'Gd', 'Ex'],  # BsmtQual
@@ -70,7 +71,6 @@ def get_ordinal_cats_ordered():
         ['None', 'Fa', 'TA', 'Gd', 'Ex'],  # PoolQC
         ['None', 'MnWw', 'GdWo', 'MnPrv', 'GdPrv']  # Fence
     ]
-    return ordinal_cats_ordered
 
 
 def init_fill_na(df):
@@ -80,8 +80,13 @@ def init_fill_na(df):
                           'PoolQC', 'Fence', 'MiscFeature', 'MasVnrType']
     for col in cols_fill_none_cat:
         df[col] = df[col].fillna("None")
-    for col in ["MasVnrArea", "GarageYrBlt"]:
-        df[col] = df[col].fillna(0)
+    df["MasVnrArea"] = df["MasVnrArea"].fillna(0)
+    # After much deliberation here's the plan for GarageYrBlt:
+    # I want it GarageAgeDuringSale, but there could be legit "0" values.. I also want it so
+    # it's not just as low as possible except 0 is "good" with respect to the sale price.
+    # So, GarageYrBlt will be -1, then filtered for >= 0, inversed, with 1 added, so the greater thev alue
+    # the better, resolving the contradiction.
+    df["GarageYrBlt"] = df["GarageYrBlt"].fillna(-1)
     return df
 
 
@@ -197,3 +202,18 @@ def fill_na_lotfrontage(df_in, indexed_scales, threshold, global_value):
     required_cols = ["BldgType", "MSZoning", "LotShape", "LotFrontage", "SqrtLotArea"]
     df = df[required_cols]
     return df.apply(_fill_na_lotfrontage_helper, args=(indexed_scales, threshold, global_value), axis=1)
+
+def get_model_and_optim(in_features):
+    model = nn.Sequential(
+        nn.Linear(in_features, 188),
+        nn.ELU(),
+        nn.Linear(188, 47),
+        nn.SiLU(),
+        nn.Linear(47, 11),
+        nn.SiLU(),
+        nn.Linear(11, 1)
+    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001171529841287367,
+                                 betas=(0.9419019618038571, 0.9699586645558991),
+                                 eps=1.2250425262180856e-08)
+    return model, optimizer
