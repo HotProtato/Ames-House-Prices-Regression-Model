@@ -39,7 +39,6 @@ class FeatureEngineering:
 
         # Inverting unemployment rate so higher is better
         df[['L1_A_UR', 'L1_A_UR_MA3', 'L1_A_UR_MA6', 'L1_I_UR', 'L1_I_UR_MA3', 'L1_I_UR_MA6']] *= -1
-
         return df
 
     def learn_maximum(self, df):

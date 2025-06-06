@@ -29,7 +29,7 @@ def get_log_minmax_cols():
             '3SsnPorch', 'ScreenPorch', 'EnclosedPorch', 'MiscVal']
 
 def get_minmax_cols():
-    return ['OverallQual', 'OverallCond', 'YrSold', 'OverallQual_sq', 'BuildingNewnessScore',
+    return ['OverallQual', 'OverallCond', 'BuildingNewnessScore',
             'BuildingRemodNewnessScore', 'GarageCars', 'Fireplaces', 'TotRmsAbvGrd', 'YrSold', 'L1_A_UR',
             'L1_A_UR_MA3', 'L1_A_UR_MA6', 'L1_I_HPI', 'L1_I_HPI_MA3', 'L1_I_HPI_MA6', 'L1_I_PR', 'L1_I_PR_MA3',
             'L1_I_PR_MA6', 'L1_I_UR', 'L1_I_UR_MA3', 'L1_I_UR_MA6', 'OverallQual_sq', 'GarageNewnessScore']
@@ -205,15 +205,15 @@ def fill_na_lotfrontage(df_in, indexed_scales, threshold, global_value):
 
 def get_model_and_optim(in_features):
     model = nn.Sequential(
-        nn.Linear(in_features, 188),
+        nn.Linear(in_features, 64),
+        nn.ReLU(),
+        nn.Linear(64, 16),
         nn.ELU(),
-        nn.Linear(188, 47),
-        nn.SiLU(),
-        nn.Linear(47, 11),
-        nn.SiLU(),
-        nn.Linear(11, 1)
+        nn.Linear(16, 12),
+        nn.ELU(),
+        nn.Linear(12, 1)
     )
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001171529841287367,
-                                 betas=(0.9419019618038571, 0.9699586645558991),
-                                 eps=1.2250425262180856e-08)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.004305515611385043,
+                                 betas=(0.8714542842778916, 0.9588120380194386),
+                                 eps=3.893025500674209e-09)
     return model, optimizer

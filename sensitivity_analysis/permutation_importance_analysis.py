@@ -1,6 +1,5 @@
 from sklearn.inspection import permutation_importance
 import pandas as pd
-from sklearn.base import BaseEstimator
 
 class PermutationImportanceAnalysis:
     def __init__(self, model, random_state=42):
@@ -9,7 +8,7 @@ class PermutationImportanceAnalysis:
         self.feature_names_ = None
         self.importances_ = None
 
-    def fit(self, X, y, scoring='neg_mean_squared_error', n_repeats=10):
+    def fit(self, X, y, scoring='neg_mean_squared_error', n_repeats=30):
         print("Calculating Permutation Importance...")
         result = permutation_importance(
             self.model,
