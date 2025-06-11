@@ -1,4 +1,5 @@
 import pandas as pd
+import random
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder
 import numpy as np
@@ -39,7 +40,7 @@ def get_minmax_cols():
 
 def get_categorical_cols_nominal():
     return ['MSSubClass', 'MSZoning', 'Street', 'Alley', 'LandContour',
-            'Utilities', 'LotConfig', 'Neighborhood', 'Condition1', 'Condition2',
+            'LotConfig', 'Neighborhood', 'Condition1', 'Condition2',
             'BldgType', 'HouseStyle', 'RoofStyle', 'RoofMatl', 'Exterior1st',
             'Exterior2nd', 'MasVnrType', 'Foundation', 'BsmtExposure', 'BsmtFinType1',
             'BsmtFinType2', 'Heating', 'CentralAir', 'Electrical', 'GarageType',
@@ -80,13 +81,28 @@ def init_fill_na(df):
                           'PoolQC', 'Fence', 'MiscFeature', 'MasVnrType']
     for col in cols_fill_none_cat:
         df[col] = df[col].fillna("None")
-    df["MasVnrArea"] = df["MasVnrArea"].fillna(0)
+    cols_fill_zero = ['BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF',
+                      'BsmtFullBath', 'BsmtHalfBath', 'GarageCars', 'GarageArea', 'MasVnrArea']
+    for col in cols_fill_zero:
+        df[col] = df[col].fillna(0)
     # After much deliberation here's the plan for GarageYrBlt:
     # I want it GarageAgeDuringSale, but there could be legit "0" values.. I also want it so
     # it's not just as low as possible except 0 is "good" with respect to the sale price.
     # So, GarageYrBlt will be -1, then filtered for >= 0, inversed, with 1 added, so the greater thev alue
     # the better, resolving the contradiction.
     df["GarageYrBlt"] = df["GarageYrBlt"].fillna(-1)
+    df["Utilities"] = df["Utilities"].fillna("AllPub")
+    # There's only 1 missing value for these two in test.csv, it's a flat roof, flat is associated with Plywood.
+    df["Exterior1st"] = df["Exterior1st"].fillna("Plywood")
+    df["Exterior2nd"] = df["Exterior2nd"].fillna("Plywood")
+    # Data description advises assumed to be typical
+    df["Functional"] = df["Functional"].fillna("Typ")
+    df["SaleType"] = df["SaleType"].fillna("Oth")
+    # KitchenQual has a tiny sensitivty rating, mode will be acceptable.
+    df["KitchenQual"] = df["KitchenQual"].fillna(df["KitchenQual"].mode()[0])
+    # The only missing MSZoning values have large LotArea's, in line with the typical "RL" values.
+    df["MSZoning"] = df["MSZoning"].fillna("RL")
+
     return df
 
 
@@ -203,17 +219,33 @@ def fill_na_lotfrontage(df_in, indexed_scales, threshold, global_value):
     df = df[required_cols]
     return df.apply(_fill_na_lotfrontage_helper, args=(indexed_scales, threshold, global_value), axis=1)
 
-def get_model_and_optim(in_features):
+def get_model_and_optim(in_features, seed=None):
+    """
+    Initializes the model and optimizer. If a seed is provided, it sets the
+    random seeds for torch, numpy, and random for reproducible results.
+    """
+    # Set the seed for reproducibility if one is provided
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed) # for multi-GPU
+            # Note: for full determinism, you might also set these,
+            # but they can impact performance.
+            # torch.backends.cudnn.deterministic = True
+            # torch.backends.cudnn.benchmark = False
     model = nn.Sequential(
-        nn.Linear(in_features, 64),
+        nn.Linear(in_features, 24),
         nn.ReLU(),
-        nn.Linear(64, 16),
+        nn.Linear(24, 20),
         nn.ELU(),
-        nn.Linear(16, 12),
+        nn.Linear(20, 8),
         nn.ELU(),
-        nn.Linear(12, 1)
+        nn.Linear(8, 1)
     )
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.004305515611385043,
-                                 betas=(0.8714542842778916, 0.9588120380194386),
-                                 eps=3.893025500674209e-09)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.006420896175259498,
+                                 betas=(0.8000189141715845, 0.9300206330023334),
+                                 eps=2.0472544826150426e-08)
     return model, optimizer
